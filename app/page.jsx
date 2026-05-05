@@ -32,41 +32,42 @@ const STATUS_OPTIONS = [
 ];
 
 const DEFAULT_FIRING_TYPES = [
-  { id: 'bizcocho', name: 'Bizcocho',     pft: '300' },
-  { id: 'esmalte',  name: 'Esmalte',      pft: '400' },
-  { id: 'raku',     name: 'Raku',         pft: '350' },
+  { id: 'bizcocho', name: 'Bizcocho', pft: '300' },
+  { id: 'esmalte',  name: 'Esmalte',  pft: '400' },
+  { id: 'raku',     name: 'Raku',     pft: '350' },
 ];
 
 const DEFAULT_CFG = {
-  KC: '200',
-  CF: '2',
-  PR: '30',
-  pin: '1234',
+  KC: '200', CF: '2', PR: '30', pin: '1234',
   firingTypes: DEFAULT_FIRING_TYPES,
 };
 
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
 const roundUp05 = (n) => Math.ceil(n * 2) / 2;
-
-const clampNum = (str, min, max, fallback) => {
+const clampNum  = (str, min, max, fallback) => {
   const n = parseFloat(str);
-  if (!isFinite(n) || isNaN(n) || n < min || n > max) return fallback;
-  return n;
+  return (!isFinite(n) || isNaN(n) || n < min || n > max) ? fallback : n;
 };
+const isSafeUri     = (u) => typeof u === 'string' && (u.startsWith('blob:') || u.startsWith('data:image/'));
+const genId         = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+const getStatusOpt  = (id) => STATUS_OPTIONS.find(o => o.id === id) || STATUS_OPTIONS[0];
+const todayISO      = () => new Date().toISOString().slice(0, 10);
+const todayLocal    = () => new Date().toLocaleDateString('es-PE');
+const getFiringTypes = (cfg) => cfg.firingTypes?.length ? cfg.firingTypes : DEFAULT_FIRING_TYPES;
 
-const isSafeUri = (uri) => {
-  if (!uri || typeof uri !== 'string') return false;
-  return uri.startsWith('blob:') || uri.startsWith('data:image/');
-};
-
-const genId = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-
-const getStatusOption = (id) => STATUS_OPTIONS.find(o => o.id === id) || STATUS_OPTIONS[0];
+/* ─── WhatsApp share helper ──────────────────────────────────────────────── */
+function openWhatsApp(text) {
+  const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Precio de Quema', text }).catch(() => window.open(url, '_blank'));
+  } else {
+    window.open(url, '_blank');
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SHARED COMPONENTS  (defined outside App — stable identity, no remounting)
+   SHARED COMPONENTS
 ═══════════════════════════════════════════════════════════════════════════ */
-
 function Navbar({ title, onBack, actionLabel, onAction, light }) {
   return (
     <div style={{ ...s.navbar, ...(light ? { backgroundColor: C.primaryDk, borderBottom: 'none' } : {}) }}>
@@ -77,9 +78,7 @@ function Navbar({ title, onBack, actionLabel, onAction, light }) {
       )}
       <span style={{ ...s.navTitle, ...(light ? { color: C.white } : {}) }}>{title}</span>
       {actionLabel && (
-        <button
-          style={{ ...s.navActionBtn, ...(light ? { backgroundColor: 'rgba(255,255,255,0.2)' } : {}) }}
-          onClick={onAction}>
+        <button style={{ ...s.navActionBtn, ...(light ? { backgroundColor: 'rgba(255,255,255,0.2)' } : {}) }} onClick={onAction}>
           <span style={{ ...s.navActionText, ...(light ? { color: C.white } : {}) }}>{actionLabel}</span>
         </button>
       )}
@@ -109,11 +108,9 @@ function PinModal({ showPin, pinInput, setPinInput, pinError, setPinError, onSub
         <p style={s.pinSub}>Ingresa el PIN para acceder a la configuración</p>
         <input
           style={{ ...s.pinInput, ...(pinError ? { borderColor: '#CC0000' } : {}) }}
-          type="password" inputMode="numeric" maxLength={4}
-          value={pinInput}
+          type="password" inputMode="numeric" maxLength={4} value={pinInput} autoFocus
           onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(false); }}
-          placeholder="••••" autoFocus
-          onKeyDown={e => e.key === 'Enter' && onSubmit()}
+          placeholder="••••" onKeyDown={e => e.key === 'Enter' && onSubmit()}
         />
         {pinError && <p style={s.pinErr}>PIN incorrecto. Inténtalo de nuevo.</p>}
         <button style={s.btnPrimary} onClick={onSubmit}>Entrar</button>
@@ -125,11 +122,11 @@ function PinModal({ showPin, pinInput, setPinInput, pinError, setPinError, onSub
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HOME SCREEN
+   HOME
 ═══════════════════════════════════════════════════════════════════════════ */
 function HomeScreen({ cfg, history, goToAdmin, setScreen }) {
-  const firingTypes = cfg.firingTypes || DEFAULT_FIRING_TYPES;
-  const kc = clampNum(cfg.KC, 1, 99999, 1);
+  const fts = getFiringTypes(cfg);
+  const kc  = clampNum(cfg.KC, 1, 99999, 1);
   return (
     <div style={s.screen}>
       <div style={s.homeHeader}>
@@ -139,10 +136,10 @@ function HomeScreen({ cfg, history, goToAdmin, setScreen }) {
       <div style={s.scrollArea}>
         <div style={s.menuGrid}>
           {[
-            { e: '📸', l: 'Calcular Precio',  d: 'Foto + medidas',               fn: () => setScreen('calculator'), accent: C.primary   },
-            { e: '⚙️', l: 'Configuración',    d: 'Parámetros del horno',         fn: goToAdmin,                     accent: C.primaryDk },
-            { e: '📋', l: 'Historial',        d: `${history.length} trabajos`,   fn: () => setScreen('history'),    accent: '#A0856B'   },
-            { e: '🔥', l: 'Estado del Horno', d: 'Seguimiento de quemas',        fn: () => {},                      accent: C.orange    },
+            { e: '📸', l: 'Calcular Precio',  d: 'Foto + medidas',             fn: () => setScreen('calculator'), accent: C.primary   },
+            { e: '⚙️', l: 'Configuración',    d: 'Parámetros del horno',       fn: goToAdmin,                     accent: C.primaryDk },
+            { e: '📋', l: 'Historial',        d: `${history.length} trabajos`, fn: () => setScreen('history'),    accent: '#A0856B'   },
+            { e: '🔥', l: 'Estado del Horno', d: 'Seguimiento de quemas',      fn: () => {},                      accent: C.orange    },
           ].map((item, i) => (
             <button key={i} style={{ ...s.menuCard, borderTop: `4px solid ${item.accent}` }} onClick={item.fn}>
               <span style={{ fontSize: 28, marginBottom: 8, display: 'block' }}>{item.e}</span>
@@ -151,31 +148,29 @@ function HomeScreen({ cfg, history, goToAdmin, setScreen }) {
             </button>
           ))}
         </div>
-
         <div style={{ ...s.card, margin: '0 16px 16px' }}>
           <div style={s.row}>
-            <span style={s.cardTitle}>Tipos de Quema Activos</span>
+            <span style={s.cardTitle}>Tipos de Quema</span>
             <button style={s.editBtn} onClick={goToAdmin}><span style={s.editBtnText}>Editar</span></button>
           </div>
           <div style={s.divider} />
-          {firingTypes.map((ft, i) => {
+          {fts.map((ft, i) => {
             const pft = clampNum(ft.pft, 0, 99999, 0);
-            const cl  = pft / kc;
             return (
-              <div key={ft.id} style={{ ...s.row, padding: '9px 0', borderBottom: i < firingTypes.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+              <div key={ft.id} style={{ ...s.row, padding: '9px 0', borderBottom: i < fts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                 <span style={s.summaryLabel}>🔥 {ft.name}</span>
                 <div style={{ textAlign: 'right' }}>
                   <span style={s.summaryValue}>S/ {pft.toFixed(0)} PFT</span>
-                  <span style={{ fontSize: 11, color: C.muted, display: 'block' }}>CL: S/ {cl.toFixed(4)}/L</span>
+                  <span style={{ fontSize: 11, color: C.muted, display: 'block' }}>CL: S/ {(pft / kc).toFixed(4)}/L</span>
                 </div>
               </div>
             );
           })}
           <div style={s.divider} />
           {[
-            { label: 'Capacidad del Horno (KC)',  value: `${cfg.KC} L` },
-            { label: 'Factor de Conversión (FC)', value: `× ${cfg.CF}` },
-            { label: 'Margen de Ganancia (G)',    value: `${cfg.PR}%`  },
+            { label: 'Capacidad del Horno (KC)',  value: `${cfg.KC} L`  },
+            { label: 'Factor de Conversión (FC)', value: `× ${cfg.CF}`  },
+            { label: 'Margen de Ganancia (G)',    value: `${cfg.PR}%`   },
           ].map((item, i) => (
             <div key={i} style={{ ...s.row, padding: '7px 0', borderBottom: i < 2 ? `1px solid ${C.border}` : 'none' }}>
               <span style={s.summaryLabel}>{item.label}</span>
@@ -183,13 +178,11 @@ function HomeScreen({ cfg, history, goToAdmin, setScreen }) {
             </div>
           ))}
         </div>
-
         <div style={{ ...s.card, margin: '0 16px 24px', backgroundColor: C.primaryXlt, border: `1px solid ${C.primaryLt}` }}>
-          <span style={{ ...s.cardTitle, color: C.primaryDk, display: 'block', marginBottom: 8 }}>Fórmula de Precios</span>
-          {['VP = H × W × D ÷ 1000  →  volumen en litros', 'CL = PFT ÷ KC  →  costo por litro', 'Precio = VP × CL × FC × (1 + G%)']
-            .map((f, i) => (
-              <p key={i} style={{ ...s.formulaLine, borderBottom: i < 2 ? `1px solid ${C.primaryLt}` : 'none', paddingBottom: i < 2 ? 5 : 0, marginBottom: i < 2 ? 5 : 0 }}>{f}</p>
-            ))}
+          <span style={{ ...s.cardTitle, color: C.primaryDk, display: 'block', marginBottom: 8 }}>Fórmula</span>
+          {['VP = H × W × D ÷ 1000', 'CL = PFT ÷ KC', 'Precio = VP × CL × FC × (1 + G%)'].map((f, i) => (
+            <p key={i} style={{ ...s.formulaLine, borderBottom: i < 2 ? `1px solid ${C.primaryLt}` : 'none', paddingBottom: i < 2 ? 4 : 0, marginBottom: i < 2 ? 4 : 0 }}>{f}</p>
+          ))}
         </div>
       </div>
     </div>
@@ -197,124 +190,77 @@ function HomeScreen({ cfg, history, goToAdmin, setScreen }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ADMIN SCREEN
+   ADMIN
 ═══════════════════════════════════════════════════════════════════════════ */
 function AdminScreen({ cfg, setCfg, setScreen, showAlert }) {
-  const [local, setLocal]     = useState(() => ({
-    ...cfg,
-    firingTypes: cfg.firingTypes || DEFAULT_FIRING_TYPES,
-  }));
+  const [local, setLocal]     = useState(() => ({ ...cfg, firingTypes: getFiringTypes(cfg) }));
   const [newPin1, setNewPin1] = useState('');
   const [newPin2, setNewPin2] = useState('');
-
   const updL = (k, v) => setLocal(p => ({ ...p, [k]: v }));
-  const updFiringType = (idx, field, value) =>
-    setLocal(prev => {
-      const types = [...prev.firingTypes];
-      types[idx] = { ...types[idx], [field]: value };
-      return { ...prev, firingTypes: types };
-    });
-
+  const updFT = (idx, field, value) =>
+    setLocal(prev => { const t = [...prev.firingTypes]; t[idx] = { ...t[idx], [field]: value }; return { ...prev, firingTypes: t }; });
   const save = () => {
     if (newPin1 || newPin2) {
-      if (!/^\d{4}$/.test(newPin1)) { showAlert('PIN inválido', 'El nuevo PIN debe tener exactamente 4 dígitos.'); return; }
-      if (newPin1 !== newPin2) { showAlert('PIN no coincide', 'Los dos campos de PIN no coinciden.'); return; }
+      if (!/^\d{4}$/.test(newPin1)) { showAlert('PIN inválido', 'El PIN debe tener exactamente 4 dígitos.'); return; }
+      if (newPin1 !== newPin2) { showAlert('PIN no coincide', 'Los dos campos no coinciden.'); return; }
       local.pin = newPin1;
     }
     const kc = clampNum(local.KC, 1, 99999, null);
     const cf = clampNum(local.CF, 0.1, 100,  null);
     const pr = clampNum(local.PR, 0, 1000,   null);
-    if (kc === null || cf === null || pr === null) {
-      showAlert('Valores inválidos', 'Verifica que todos los campos tengan valores numéricos válidos.'); return;
-    }
-    // Validate each firing type PFT
-    for (const ft of local.firingTypes) {
-      if (clampNum(ft.pft, 0, 99999, null) === null) {
-        showAlert('PFT inválido', `Revisa el Precio de Quema Total para "${ft.name}".`); return;
-      }
-    }
+    if (!kc || !cf || pr === null) { showAlert('Valores inválidos', 'Revisa los campos numéricos.'); return; }
+    for (const ft of local.firingTypes)
+      if (clampNum(ft.pft, 0, 99999, null) === null) { showAlert('PFT inválido', `Revisa el PFT de "${ft.name}".`); return; }
     setCfg({ ...local, KC: String(kc), CF: String(cf), PR: String(pr) });
     setScreen('home');
   };
-
   const kc = clampNum(local.KC, 1, 99999, 1);
-
   return (
     <div style={s.screen}>
-      <Navbar title="Configuración del Horno" onBack={() => setScreen('home')} actionLabel="Guardar" onAction={save} />
+      <Navbar title="Configuración" onBack={() => setScreen('home')} actionLabel="Guardar" onAction={save} />
       <div style={s.scrollArea}>
         <div style={{ padding: 16, paddingBottom: 40 }}>
-
-          {/* ── Firing Types ── */}
           <div style={s.card}>
             <span style={s.cardTitle}>🔥 Tipos de Quema y PFT</span>
-            <p style={s.cardSub}>Define el Precio de Quema Total (PFT) para cada tipo. El costo por litro (CL) se calcula automáticamente.</p>
-            {local.firingTypes.map((ft, idx) => {
-              const pft = clampNum(ft.pft, 0, 99999, 0);
-              const cl  = pft / kc;
-              return (
-                <div key={ft.id} style={{ marginBottom: idx < local.firingTypes.length - 1 ? 16 : 0, paddingBottom: idx < local.firingTypes.length - 1 ? 16 : 0, borderBottom: idx < local.firingTypes.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 6 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={s.label}>Nombre</label>
-                      <input style={s.input} value={ft.name} maxLength={30}
-                        onChange={e => updFiringType(idx, 'name', e.target.value)} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={s.label}>PFT (S/)</label>
-                      <div style={s.inputWrap}>
-                        <input style={s.input} type="number" inputMode="decimal" value={ft.pft} maxLength={8}
-                          onChange={e => updFiringType(idx, 'pft', e.target.value)} placeholder="400" />
-                        <span style={s.unit}>S/</span>
-                      </div>
+            <p style={s.cardSub}>PFT = Precio de Quema Total. El CL se calcula automáticamente.</p>
+            {local.firingTypes.map((ft, idx) => (
+              <div key={ft.id} style={{ marginBottom: idx < local.firingTypes.length - 1 ? 14 : 0, paddingBottom: idx < local.firingTypes.length - 1 ? 14 : 0, borderBottom: idx < local.firingTypes.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={s.label}>Nombre</label>
+                    <input style={s.input} value={ft.name} maxLength={30} onChange={e => updFT(idx, 'name', e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={s.label}>PFT (S/)</label>
+                    <div style={s.inputWrap}>
+                      <input style={s.input} type="number" inputMode="decimal" value={ft.pft} maxLength={8}
+                        onChange={e => updFT(idx, 'pft', e.target.value)} placeholder="400" />
+                      <span style={s.unit}>S/</span>
                     </div>
                   </div>
-                  <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>CL = S/ {cl.toFixed(4)} / L</p>
                 </div>
-              );
-            })}
+                <p style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>CL = S/ {(clampNum(ft.pft, 0, 99999, 0) / kc).toFixed(4)} / L</p>
+              </div>
+            ))}
           </div>
-
-          {/* ── Kiln Params ── */}
           <div style={s.card}>
             <span style={s.cardTitle}>Parámetros del Horno</span>
-            <label style={s.label}>KC – Capacidad del Horno</label>
-            <div style={s.inputWrap}>
-              <input style={s.input} type="number" inputMode="decimal" value={local.KC} maxLength={8}
-                onChange={e => updL('KC', e.target.value)} placeholder="200" />
-              <span style={s.unit}>L</span>
-            </div>
+            <label style={s.label}>KC – Capacidad</label>
+            <div style={s.inputWrap}><input style={s.input} type="number" inputMode="decimal" value={local.KC} maxLength={8} onChange={e => updL('KC', e.target.value)} placeholder="200" /><span style={s.unit}>L</span></div>
             <label style={{ ...s.label, marginTop: 14 }}>FC – Factor de Conversión</label>
-            <div style={{ ...s.inputWrap, marginBottom: 4 }}>
-              <input style={s.input} type="number" inputMode="decimal" value={local.CF} maxLength={6}
-                onChange={e => updL('CF', e.target.value)} placeholder="2" />
-              <span style={s.unit}>×</span>
-            </div>
-            <p style={s.hint}>Ajusta la densidad de piezas en el horno (por defecto: 2)</p>
+            <div style={{ ...s.inputWrap, marginBottom: 4 }}><input style={s.input} type="number" inputMode="decimal" value={local.CF} maxLength={6} onChange={e => updL('CF', e.target.value)} placeholder="2" /><span style={s.unit}>×</span></div>
+            <p style={s.hint}>Ajusta la densidad de piezas en el horno</p>
             <label style={{ ...s.label, marginTop: 14 }}>G – Margen de Ganancia</label>
-            <div style={s.inputWrap}>
-              <input style={s.input} type="number" inputMode="decimal" value={local.PR} maxLength={6}
-                onChange={e => updL('PR', e.target.value)} placeholder="30" />
-              <span style={s.unit}>%</span>
-            </div>
+            <div style={s.inputWrap}><input style={s.input} type="number" inputMode="decimal" value={local.PR} maxLength={6} onChange={e => updL('PR', e.target.value)} placeholder="30" /><span style={s.unit}>%</span></div>
           </div>
-
-          {/* ── PIN ── */}
           <div style={s.card}>
-            <span style={s.cardTitle}>🔒 Cambiar PIN de Acceso</span>
-            <p style={s.cardSub}>Deja en blanco si no deseas cambiar el PIN actual.</p>
+            <span style={s.cardTitle}>🔒 Cambiar PIN</span>
+            <p style={s.cardSub}>Deja en blanco para no cambiar el PIN actual.</p>
             <label style={s.label}>Nuevo PIN (4 dígitos)</label>
-            <div style={{ ...s.inputWrap, marginBottom: 14 }}>
-              <input style={s.input} type="password" inputMode="numeric" maxLength={4}
-                value={newPin1} onChange={e => setNewPin1(e.target.value.replace(/\D/g, ''))} placeholder="••••" />
-            </div>
-            <label style={s.label}>Confirmar Nuevo PIN</label>
-            <div style={s.inputWrap}>
-              <input style={s.input} type="password" inputMode="numeric" maxLength={4}
-                value={newPin2} onChange={e => setNewPin2(e.target.value.replace(/\D/g, ''))} placeholder="••••" />
-            </div>
+            <div style={{ ...s.inputWrap, marginBottom: 14 }}><input style={s.input} type="password" inputMode="numeric" maxLength={4} value={newPin1} onChange={e => setNewPin1(e.target.value.replace(/\D/g, ''))} placeholder="••••" /></div>
+            <label style={s.label}>Confirmar PIN</label>
+            <div style={s.inputWrap}><input style={s.input} type="password" inputMode="numeric" maxLength={4} value={newPin2} onChange={e => setNewPin2(e.target.value.replace(/\D/g, ''))} placeholder="••••" /></div>
           </div>
-
           <button style={s.btnPrimary} onClick={save}>Guardar Configuración</button>
           <button style={s.btnOutline} onClick={() => setScreen('home')}>Cancelar</button>
         </div>
@@ -324,42 +270,34 @@ function AdminScreen({ cfg, setCfg, setScreen, showAlert }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CALCULATOR SCREEN
+   CALCULATOR
 ═══════════════════════════════════════════════════════════════════════════ */
 function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, clientName, setClientName, firingTypeId, setFiringTypeId, status, setStatus, calculate, setScreen, liveVP, livePrice, getCL, fileInputRef, handleFileSelect }) {
-  const vp = liveVP(), price = livePrice();
-  const firingTypes = cfg.firingTypes || DEFAULT_FIRING_TYPES;
-
+  const vp    = liveVP();
+  const price = livePrice();
+  const fts   = getFiringTypes(cfg);
   return (
     <div style={s.screen}>
       <Navbar title="Calcular Precio" onBack={() => setScreen('home')} />
       <div style={s.scrollArea}>
         <div style={{ padding: 16, paddingBottom: 40 }}>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileSelect} />
 
-          <input ref={fileInputRef} type="file" accept="image/*"
-            style={{ display: 'none' }} onChange={handleFileSelect} />
-
-          {/* ── Client name ── */}
           <div style={s.card}>
             <label style={s.label}>👤 Nombre del Cliente</label>
-            <input style={s.input} placeholder="Ej. María García"
-              value={clientName} onChange={e => setClientName(e.target.value)} maxLength={80} />
+            <input style={s.input} placeholder="Ej. María García" value={clientName} onChange={e => setClientName(e.target.value)} maxLength={80} />
           </div>
 
-          {/* ── Firing type ── */}
           <div style={s.card}>
             <label style={s.label}>🔥 Tipo de Quema</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-              {firingTypes.map(ft => {
+              {fts.map(ft => {
                 const active = firingTypeId === ft.id;
-                const pft = clampNum(ft.pft, 0, 99999, 0);
-                const cl  = pft / clampNum(cfg.KC, 1, 99999, 1);
                 return (
                   <button key={ft.id}
                     style={{ padding: '8px 14px', borderRadius: 20, border: `2px solid ${active ? C.primary : C.border}`, backgroundColor: active ? C.primary : C.white, color: active ? C.white : C.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                     onClick={() => setFiringTypeId(ft.id)}>
-                    {ft.name}
-                    <span style={{ fontSize: 11, opacity: 0.8, marginLeft: 4 }}>S/{pft.toFixed(0)}</span>
+                    {ft.name} <span style={{ opacity: 0.75, fontSize: 11 }}>S/{clampNum(ft.pft, 0, 99999, 0).toFixed(0)}</span>
                   </button>
                 );
               })}
@@ -374,15 +312,11 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
             )}
           </div>
 
-          {/* ── Photo ── */}
           <div style={s.card}>
             <label style={s.label}>📷 Foto de la Pieza (con regla en cm)</label>
             {photo ? (
-              <>
-                <img src={photo} style={s.photoPreview} alt="Pieza" />
-                <button style={{ ...s.btnOutline, marginTop: 8 }}
-                  onClick={() => fileInputRef.current?.click()}>Cambiar Foto</button>
-              </>
+              <><img src={photo} style={s.photoPreview} alt="Pieza" />
+                <button style={{ ...s.btnOutline, marginTop: 8 }} onClick={() => fileInputRef.current?.click()}>Cambiar Foto</button></>
             ) : (
               <button style={s.photoPlaceholder} onClick={() => fileInputRef.current?.click()}>
                 <span style={{ fontSize: 44 }}>📷</span>
@@ -393,13 +327,9 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
           </div>
 
           <div style={s.tipBox}>
-            <p style={s.tipText}>
-              <strong>📐 Consejo: </strong>
-              Ingresa las medidas manualmente con la regla. Se redondean automáticamente al 0.5 cm más cercano.
-            </p>
+            <p style={s.tipText}><strong>📐 Consejo: </strong>Ingresa las medidas con la regla. Se redondean al 0.5 cm más cercano.</p>
           </div>
 
-          {/* ── Measurements ── */}
           <div style={s.card}>
             <label style={s.label}>📐 Medidas (cm)</label>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -407,18 +337,14 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
                 <div key={key} style={{ flex: 1 }}>
                   <label style={{ ...s.label, textAlign: 'center', display: 'block' }}>{label}</label>
                   <div style={s.inputWrap}>
-                    <input
-                      style={{ ...s.input, textAlign: 'center', paddingRight: 28 }}
+                    <input style={{ ...s.input, textAlign: 'center', paddingRight: 28 }}
                       type="number" inputMode="decimal" placeholder="0" maxLength={6}
-                      value={meas[key]}
-                      onChange={e => setMeas(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                      value={meas[key]} onChange={e => setMeas(prev => ({ ...prev, [key]: e.target.value }))} />
                     <span style={{ ...s.unit, fontSize: 11 }}>cm</span>
                   </div>
                 </div>
               ))}
             </div>
-
             {(meas.H || meas.W || meas.D) && (
               <div style={{ marginTop: 10, padding: 8, backgroundColor: C.bg, borderRadius: 8 }}>
                 <p style={{ fontSize: 12, color: C.muted }}>
@@ -429,7 +355,6 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
                 </p>
               </div>
             )}
-
             {vp !== null && (
               <div style={{ ...s.previewRow, marginTop: 10, border: `1px solid ${C.primaryLt}` }}>
                 <div style={{ ...s.row, marginBottom: 6 }}>
@@ -444,14 +369,11 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
             )}
           </div>
 
-          {/* ── Description ── */}
           <div style={s.card}>
-            <label style={s.label}>🏺 Descripción de la Pieza (opcional)</label>
-            <input style={s.input} placeholder="Ej. Tazón decorativo grande"
-              value={desc} onChange={e => setDesc(e.target.value)} maxLength={100} />
+            <label style={s.label}>🏺 Descripción (opcional)</label>
+            <input style={s.input} placeholder="Ej. Tazón decorativo grande" value={desc} onChange={e => setDesc(e.target.value)} maxLength={100} />
           </div>
 
-          {/* ── Status ── */}
           <div style={s.card}>
             <label style={s.label}>📋 Estado de la Pieza</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
@@ -476,63 +398,47 @@ function CalculatorScreen({ cfg, meas, setMeas, photo, setPhoto, desc, setDesc, 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RESULT SCREEN
+   RESULT
 ═══════════════════════════════════════════════════════════════════════════ */
 function ResultScreen({ result, cfg, setScreen, resetCalc, updateStatus }) {
   if (!result) return null;
   const { clientName, desc: d, photo: p, H, W, D, VP, PFT, CL, CF, PR, PR_mul, price, date, firingTypeId, status } = result;
-  const firingTypes = cfg.firingTypes || DEFAULT_FIRING_TYPES;
-  const firingType  = firingTypes.find(t => t.id === firingTypeId) || firingTypes[0];
-  const statusOpt   = getStatusOption(status);
+  const fts       = getFiringTypes(cfg);
+  const ft        = fts.find(t => t.id === firingTypeId) || fts[0];
+  const statusOpt = getStatusOpt(status);
 
-  const shareWhatsApp = () => {
+  const share = () => {
     const lines = [
       '🔥 *Precio de Quema*',
       clientName ? `👤 *Cliente:* ${clientName}` : null,
       `🏺 *Pieza:* ${d}`,
-      `🔥 *Tipo:* ${firingType?.name || firingTypeId}`,
+      `🔥 *Tipo:* ${ft?.name || firingTypeId}`,
       `📋 *Estado:* ${statusOpt.emoji} ${statusOpt.label}`,
       '',
       `📐 *Medidas:* ${H} × ${W} × ${D} cm`,
       `📦 *Volumen:* ${VP.toFixed(3)} L`,
       '',
-      `💰 *PRECIO FINAL: S/ ${price.toFixed(2)}*`,
+      `💰 *PRECIO: S/ ${price.toFixed(2)}*`,
       `📅 ${date}`,
     ].filter(l => l !== null).join('\n');
-
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(lines)}`;
-
-    if (navigator.share) {
-      navigator.share({ title: 'Precio de Quema', text: lines }).catch(() => {
-        window.open(waUrl, '_blank');
-      });
-    } else {
-      window.open(waUrl, '_blank');
-    }
+    openWhatsApp(lines);
   };
 
   return (
     <div style={s.screen}>
       <Navbar title="Precio de Quema" onBack={() => setScreen('calculator')} actionLabel="Nueva" onAction={resetCalc} light />
       <div style={s.scrollArea}>
-        <div style={{ ...s.resultHero }}>
+        <div style={s.resultHero}>
           {clientName && <p style={{ ...s.resultDesc, marginBottom: 4 }}>👤 {clientName}</p>}
           <p style={s.resultDesc}>{d}</p>
           <p style={s.resultPrice}>S/ {price.toFixed(2)}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-            <span style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: C.white, borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
-              🔥 {firingType?.name}
-            </span>
-            <span style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: C.white, borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
-              {statusOpt.emoji} {statusOpt.label}
-            </span>
+            <span style={s.heroBadge}>🔥 {ft?.name}</span>
+            <span style={s.heroBadge}>{statusOpt.emoji} {statusOpt.label}</span>
           </div>
           <p style={s.resultMeta}>{date} · incl. {PR}% de ganancia</p>
         </div>
-
         <div style={{ padding: 16 }}>
-
-          {/* ── Update status ── */}
           <div style={s.card}>
             <label style={s.label}>📋 Actualizar Estado</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
@@ -541,22 +447,14 @@ function ResultScreen({ result, cfg, setScreen, resetCalc, updateStatus }) {
                 return (
                   <button key={opt.id}
                     style={{ padding: '8px 14px', borderRadius: 20, border: `2px solid ${opt.color}`, backgroundColor: active ? opt.color : `${opt.color}18`, color: active ? C.white : opt.color, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                    onClick={() => updateStatus(opt.id)}>
-                    {opt.emoji} {opt.label}
-                  </button>
+                    onClick={() => updateStatus(opt.id)}>{opt.emoji} {opt.label}</button>
                 );
               })}
             </div>
           </div>
-
-          {p && isSafeUri(p) && (
-            <div style={s.card}>
-              <img src={p} style={{ ...s.photoPreview, height: 200 }} alt={d} />
-            </div>
-          )}
-
+          {p && isSafeUri(p) && <div style={s.card}><img src={p} style={{ ...s.photoPreview, height: 200 }} alt={d} /></div>}
           <div style={s.card}>
-            <span style={s.cardTitle}>Dimensiones (redondeado ↑ a 0.5 cm)</span>
+            <span style={s.cardTitle}>Dimensiones</span>
             <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
               {[['Alto', H], ['Ancho', W], ['Fondo', D]].map(([lbl, val]) => (
                 <div key={lbl} style={{ flex: 1, backgroundColor: C.bg, borderRadius: 10, padding: 10, textAlign: 'center' }}>
@@ -567,15 +465,14 @@ function ResultScreen({ result, cfg, setScreen, resetCalc, updateStatus }) {
               ))}
             </div>
           </div>
-
           <div style={s.card}>
             <span style={s.cardTitle}>Desglose del Cálculo</span>
             {[
-              { label: 'Tipo de Quema',             formula: `PFT S/${PFT.toFixed(2)}`,                      value: firingType?.name          },
-              { label: 'Volumen (VP)',               formula: `(${H} × ${W} × ${D}) ÷ 1000`,                 value: `${VP.toFixed(4)} L`      },
-              { label: 'Costo por Litro (CL)',       formula: `PFT S/${PFT.toFixed(2)} ÷ KC ${cfg.KC} L`,    value: `S/ ${CL.toFixed(4)} / L` },
-              { label: 'Factor de Conversión (FC)',  formula: 'Ajuste densidad / espacio',                   value: `× ${CF}`                 },
-              { label: 'Margen de Ganancia (G)',     formula: `${PR}% → multiplicador`,                     value: `× ${PR_mul.toFixed(2)}`  },
+              { label: 'Tipo de Quema',            formula: `PFT S/${PFT.toFixed(2)}`,                    value: ft?.name          },
+              { label: 'Volumen (VP)',              formula: `(${H}×${W}×${D})÷1000`,                      value: `${VP.toFixed(4)} L` },
+              { label: 'Costo por Litro (CL)',      formula: `S/${PFT.toFixed(2)}÷${cfg.KC}L`,             value: `S/${CL.toFixed(4)}/L` },
+              { label: 'Factor de Conversión (FC)', formula: 'Ajuste densidad',                            value: `× ${CF}`         },
+              { label: 'Margen de Ganancia (G)',    formula: `${PR}%`,                                     value: `× ${PR_mul.toFixed(2)}` },
             ].map((row, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: i < 4 ? `1px solid ${C.border}` : 'none' }}>
                 <div style={{ flex: 1 }}>
@@ -586,27 +483,19 @@ function ResultScreen({ result, cfg, setScreen, resetCalc, updateStatus }) {
               </div>
             ))}
           </div>
-
           <div style={{ ...s.card, backgroundColor: C.primary }}>
             <div style={s.row}>
               <div>
-                <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>Precio Final de Quema</p>
-                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 2 }}>VP × CL × FC × (1 + {PR}%)</p>
+                <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>Precio Final</p>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 2 }}>VP × CL × FC × (1+{PR}%)</p>
               </div>
               <span style={{ color: C.white, fontSize: 30, fontWeight: 900 }}>S/ {price.toFixed(2)}</span>
             </div>
           </div>
-
-          {/* ── WhatsApp share ── */}
-          <button
-            style={{ ...s.btnPrimary, backgroundColor: '#25D366', marginBottom: 10 }}
-            onClick={shareWhatsApp}>
-            📲 Enviar por WhatsApp
-          </button>
-
+          <button style={{ ...s.btnPrimary, backgroundColor: '#25D366' }} onClick={share}>📲 Enviar por WhatsApp</button>
           <div style={{ display: 'flex', gap: 12, paddingBottom: 24 }}>
             <button style={{ ...s.btnOutline, flex: 1, marginBottom: 0 }} onClick={resetCalc}>Nueva Pieza</button>
-            <button style={{ ...s.btnPrimary, flex: 1, marginBottom: 0 }} onClick={() => setScreen('history')}>Ver Historial</button>
+            <button style={{ ...s.btnPrimary, flex: 1, marginBottom: 0 }} onClick={() => setScreen('history')}>Historial</button>
           </div>
         </div>
       </div>
@@ -615,55 +504,234 @@ function ResultScreen({ result, cfg, setScreen, resetCalc, updateStatus }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HISTORY SCREEN
+   HISTORY  — filters + multi-select
 ═══════════════════════════════════════════════════════════════════════════ */
-function HistoryScreen({ history, setResult, setScreen, cfg }) {
-  const firingTypes = cfg.firingTypes || DEFAULT_FIRING_TYPES;
+function HistoryScreen({ history, setResult, setScreen, cfg, selectedIds, setSelectedIds, selectMode, setSelectMode }) {
+  const [filterName,  setFilterName]  = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const fts = getFiringTypes(cfg);
+
+  const filtered = history.filter(item => {
+    const nameOk  = !filterName  || [item.clientName, item.desc].some(f => (f || '').toLowerCase().includes(filterName.toLowerCase()));
+    const monthOk = !filterMonth || (item.rawDate || '').startsWith(filterMonth);
+    return nameOk && monthOk;
+  });
+
+  const toggleItem = (id) =>
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const toggleAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)));
+    }
+  };
+
+  const cancelSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
+
+  const selectedItems  = history.filter(i => selectedIds.has(i.id));
+  const totalSelected  = selectedItems.reduce((s, i) => s + i.price, 0);
+  const allSelected    = filtered.length > 0 && selectedIds.size === filtered.length;
+
   return (
     <div style={s.screen}>
-      <Navbar title="Historial de Trabajos" onBack={() => setScreen('home')} />
+      <Navbar
+        title={selectMode ? `${selectedIds.size} seleccionadas` : 'Historial'}
+        onBack={selectMode ? cancelSelect : () => setScreen('home')}
+        actionLabel={selectMode ? 'Cancelar' : 'Seleccionar'}
+        onAction={selectMode ? cancelSelect : () => setSelectMode(true)}
+      />
+
+      {/* ── Filter bar ── */}
+      <div style={{ padding: '10px 12px', backgroundColor: C.white, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div style={{ flex: 2, position: 'relative' }}>
+          <input
+            style={{ ...s.input, padding: '9px 32px 9px 12px', fontSize: 14 }}
+            placeholder="🔍 Buscar cliente o pieza…"
+            value={filterName} onChange={e => setFilterName(e.target.value)}
+          />
+          {filterName && (
+            <button style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: 18, lineHeight: 1 }}
+              onClick={() => setFilterName('')}>×</button>
+          )}
+        </div>
+        <input
+          style={{ ...s.input, flex: 1, padding: '9px 10px', fontSize: 13, color: filterMonth ? C.dark : C.muted, minWidth: 0 }}
+          type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+          title="Filtrar por mes"
+        />
+        {filterMonth && (
+          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: 18, padding: '0 4px' }}
+            onClick={() => setFilterMonth('')}>×</button>
+        )}
+      </div>
+
+      {/* ── Select-all bar ── */}
+      {selectMode && filtered.length > 0 && (
+        <div style={{ padding: '8px 16px', backgroundColor: C.primaryXlt, borderBottom: `1px solid ${C.primaryLt}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button
+            style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${allSelected ? C.primary : C.muted}`, backgroundColor: allSelected ? C.primary : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            onClick={toggleAll}>
+            {allSelected && <span style={{ color: C.white, fontSize: 13, fontWeight: 800 }}>✓</span>}
+          </button>
+          <span style={{ fontSize: 13, color: C.primaryDk, fontWeight: 600 }}>
+            {allSelected ? 'Deseleccionar todo' : `Seleccionar todo (${filtered.length})`}
+          </span>
+        </div>
+      )}
+
       <div style={s.scrollArea}>
-        <div style={{ padding: 16, paddingBottom: 32 }}>
-          {history.length === 0 ? (
+        <div style={{ padding: 16, paddingBottom: selectMode && selectedIds.size > 0 ? 24 : 32 }}>
+          {filtered.length === 0 ? (
             <div style={{ textAlign: 'center', paddingTop: 60 }}>
-              <p style={{ fontSize: 48, marginBottom: 12 }}>📭</p>
-              <p style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>Sin trabajos aún</p>
-              <p style={{ fontSize: 14, color: C.muted, marginBottom: 24 }}>Calcula el precio de tu primera pieza para verla aquí.</p>
-              <button style={s.btnPrimary} onClick={() => setScreen('calculator')}>Calcular Primera Pieza</button>
+              <p style={{ fontSize: 48, marginBottom: 12 }}>{history.length === 0 ? '📭' : '🔍'}</p>
+              <p style={{ fontWeight: 700, fontSize: 16, color: C.text, marginBottom: 6 }}>
+                {history.length === 0 ? 'Sin trabajos aún' : 'Sin resultados'}
+              </p>
+              <p style={{ fontSize: 14, color: C.muted, marginBottom: 24 }}>
+                {history.length === 0 ? 'Calcula el precio de tu primera pieza.' : 'Prueba con otro nombre o mes.'}
+              </p>
+              {history.length === 0 && <button style={s.btnPrimary} onClick={() => setScreen('calculator')}>Calcular Primera Pieza</button>}
             </div>
-          ) : history.map(item => {
-            const ft        = firingTypes.find(t => t.id === item.firingTypeId);
-            const statusOpt = getStatusOption(item.status);
+          ) : filtered.map(item => {
+            const ft        = fts.find(t => t.id === item.firingTypeId);
+            const statusOpt = getStatusOpt(item.status);
+            const isSelected = selectedIds.has(item.id);
             return (
-              <button key={item.id} style={{ ...s.card, width: '100%', textAlign: 'left', cursor: 'pointer' }}
-                onClick={() => { setResult(item); setScreen('result'); }}>
-                <div style={s.row}>
-                  <div style={{ flex: 1, marginRight: 10 }}>
-                    {item.clientName && (
-                      <p style={{ fontSize: 12, color: C.primary, fontWeight: 700, marginBottom: 2 }}>👤 {item.clientName}</p>
-                    )}
-                    <p style={{ fontWeight: 700, fontSize: 15, color: C.dark, marginBottom: 4 }}>{item.desc}</p>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {ft && <span style={{ fontSize: 11, color: C.muted }}>🔥 {ft.name}</span>}
-                      <span style={{ fontSize: 11, color: statusOpt.color, fontWeight: 600 }}>{statusOpt.emoji} {statusOpt.label}</span>
-                      <span style={{ fontSize: 11, color: C.muted }}>{item.date}</span>
+              <button key={item.id}
+                style={{ ...s.card, width: '100%', textAlign: 'left', borderLeft: isSelected ? `4px solid ${C.primary}` : `4px solid transparent` }}
+                onClick={() => selectMode ? toggleItem(item.id) : (setResult(item), setScreen('result'))}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {selectMode && (
+                    <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${isSelected ? C.primary : C.border}`, backgroundColor: isSelected ? C.primary : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {isSelected && <span style={{ color: C.white, fontSize: 13, fontWeight: 800 }}>✓</span>}
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    {item.clientName && <p style={{ fontSize: 12, color: C.primary, fontWeight: 700, marginBottom: 2 }}>👤 {item.clientName}</p>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, marginRight: 8 }}>
+                        <p style={{ fontWeight: 700, fontSize: 15, color: C.dark, marginBottom: 4 }}>{item.desc}</p>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {ft && <span style={{ fontSize: 11, color: C.muted }}>🔥 {ft.name}</span>}
+                          <span style={{ fontSize: 11, color: statusOpt.color, fontWeight: 600 }}>{statusOpt.emoji} {statusOpt.label}</span>
+                          <span style={{ fontSize: 11, color: C.muted }}>{item.date}</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 20, fontWeight: 800, color: C.primary, whiteSpace: 'nowrap' }}>S/ {item.price.toFixed(2)}</span>
                     </div>
                   </div>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: C.primary, whiteSpace: 'nowrap' }}>
-                    S/ {item.price.toFixed(2)}
-                  </span>
                 </div>
               </button>
             );
           })}
         </div>
       </div>
+
+      {/* ── Sticky selection bar ── */}
+      {selectMode && selectedIds.size > 0 && (
+        <div style={{ backgroundColor: C.primaryDk, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, margin: 0 }}>{selectedIds.size} pieza{selectedIds.size > 1 ? 's' : ''} seleccionada{selectedIds.size > 1 ? 's' : ''}</p>
+            <p style={{ color: C.white, fontSize: 20, fontWeight: 800, margin: 0 }}>S/ {totalSelected.toFixed(2)}</p>
+          </div>
+          <button
+            style={{ backgroundColor: C.white, color: C.primaryDk, border: 'none', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+            onClick={() => setScreen('summary')}>
+            Ver Resumen →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   APP  (only state + wiring — no JSX screen logic here)
+   SUMMARY  — totals + WhatsApp
+═══════════════════════════════════════════════════════════════════════════ */
+function SummaryScreen({ history, selectedIds, cfg, setScreen, setSelectedIds, setSelectMode }) {
+  const items    = history.filter(i => selectedIds.has(i.id));
+  const total    = items.reduce((s, i) => s + i.price, 0);
+  const fts      = getFiringTypes(cfg);
+  const clients  = [...new Set(items.map(i => i.clientName).filter(Boolean))];
+  const clientLabel = clients.length === 1 ? clients[0] : clients.length > 1 ? `${clients.length} clientes` : 'Sin nombre';
+
+  const back = () => { setSelectedIds(new Set()); setSelectMode(false); setScreen('history'); };
+
+  const share = () => {
+    const lines = [
+      '🔥 *Resumen de Quema*',
+      clients.length === 1 ? `👤 *Cliente:* ${clients[0]}` : clients.length > 1 ? `👥 *Clientes:* ${clients.join(', ')}` : null,
+      '',
+      ...items.map(item => {
+        const ft = fts.find(t => t.id === item.firingTypeId);
+        return `🏺 ${item.desc}${ft ? ` (${ft.name})` : ''} — *S/ ${item.price.toFixed(2)}*`;
+      }),
+      '',
+      `💰 *TOTAL: S/ ${total.toFixed(2)}*`,
+      `📋 ${items.length} pieza${items.length > 1 ? 's' : ''}`,
+      `📅 ${todayLocal()}`,
+    ].filter(l => l !== null).join('\n');
+    openWhatsApp(lines);
+  };
+
+  if (items.length === 0) { setScreen('history'); return null; }
+
+  return (
+    <div style={s.screen}>
+      <Navbar title="Resumen de Piezas" onBack={back} />
+      <div style={s.scrollArea}>
+        <div style={{ ...s.resultHero }}>
+          <p style={s.resultDesc}>{clientLabel}</p>
+          <p style={s.resultPrice}>S/ {total.toFixed(2)}</p>
+          <p style={s.resultMeta}>{items.length} pieza{items.length > 1 ? 's' : ''} seleccionada{items.length > 1 ? 's' : ''}</p>
+        </div>
+        <div style={{ padding: 16 }}>
+          <div style={s.card}>
+            <span style={s.cardTitle}>Piezas Incluidas</span>
+            <div style={{ marginTop: 8 }}>
+              {items.map((item, i) => {
+                const ft        = fts.find(t => t.id === item.firingTypeId);
+                const statusOpt = getStatusOpt(item.status);
+                return (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: i < items.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                    <div style={{ flex: 1, marginRight: 10 }}>
+                      {item.clientName && <p style={{ fontSize: 11, color: C.primary, fontWeight: 700, marginBottom: 2 }}>👤 {item.clientName}</p>}
+                      <p style={{ fontSize: 14, fontWeight: 600, color: C.dark, marginBottom: 3 }}>{item.desc}</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {ft && <span style={{ fontSize: 11, color: C.muted }}>🔥 {ft.name}</span>}
+                        <span style={{ fontSize: 11, color: statusOpt.color }}>{statusOpt.emoji} {statusOpt.label}</span>
+                        <span style={{ fontSize: 11, color: C.muted }}>{item.date}</span>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: C.primary, whiteSpace: 'nowrap' }}>S/ {item.price.toFixed(2)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ ...s.card, backgroundColor: C.primary }}>
+            <div style={s.row}>
+              <div>
+                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>Total ({items.length} piezas)</p>
+                {clients.length === 1 && <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 }}>👤 {clients[0]}</p>}
+              </div>
+              <span style={{ color: C.white, fontSize: 28, fontWeight: 900 }}>S/ {total.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <button style={{ ...s.btnPrimary, backgroundColor: '#25D366' }} onClick={share}>📲 Enviar Total por WhatsApp</button>
+          <button style={s.btnOutline} onClick={back}>← Volver al Historial</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   APP
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
   const [cfg, setCfg]             = useState(DEFAULT_CFG);
@@ -671,23 +739,25 @@ export default function App() {
   const [screen, setScreen]       = useState('home');
 
   // Calculator fields
-  const [photo, setPhoto]           = useState(null);
-  const [desc, setDesc]             = useState('');
-  const [meas, setMeas]             = useState({ H: '', W: '', D: '' });
-  const [clientName, setClientName] = useState('');
+  const [photo, setPhoto]               = useState(null);
+  const [desc, setDesc]                 = useState('');
+  const [meas, setMeas]                 = useState({ H: '', W: '', D: '' });
+  const [clientName, setClientName]     = useState('');
   const [firingTypeId, setFiringTypeId] = useState('esmalte');
-  const [status, setStatus]         = useState('pendiente');
+  const [status, setStatus]             = useState('pendiente');
 
-  // Results & history
+  // Results
   const [result, setResult]   = useState(null);
   const [history, setHistory] = useState([]);
 
-  // PIN gate
-  const [showPin, setShowPin]   = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  // Multi-select (history)
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectMode, setSelectMode]   = useState(false);
 
-  // Alert
+  // PIN + Alert
+  const [showPin, setShowPin]     = useState(false);
+  const [pinInput, setPinInput]   = useState('');
+  const [pinError, setPinError]   = useState(false);
   const [alertData, setAlertData] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -696,126 +766,77 @@ export default function App() {
   useEffect(() => {
     try {
       const c = localStorage.getItem(CFG_KEY);
-      if (c) {
-        const parsed = JSON.parse(c);
-        setCfg({ ...DEFAULT_CFG, ...parsed, firingTypes: parsed.firingTypes?.length ? parsed.firingTypes : DEFAULT_FIRING_TYPES });
-      }
+      if (c) { const p = JSON.parse(c); setCfg({ ...DEFAULT_CFG, ...p, firingTypes: p.firingTypes?.length ? p.firingTypes : DEFAULT_FIRING_TYPES }); }
       const h = localStorage.getItem(HIST_KEY);
       if (h) setHistory(JSON.parse(h).map(i => ({ ...i, photo: null })));
     } catch (_) {}
     setCfgLoaded(true);
   }, []);
 
-  useEffect(() => {
-    if (!cfgLoaded) return;
-    localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-  }, [cfg, cfgLoaded]);
-
-  useEffect(() => {
-    if (!cfgLoaded) return;
-    localStorage.setItem(HIST_KEY, JSON.stringify(history.map(i => ({ ...i, photo: null }))));
-  }, [history, cfgLoaded]);
-
-  useEffect(() => {
-    return () => { if (photo?.startsWith('blob:')) URL.revokeObjectURL(photo); };
-  }, [photo]);
+  useEffect(() => { if (cfgLoaded) localStorage.setItem(CFG_KEY,  JSON.stringify(cfg)); }, [cfg, cfgLoaded]);
+  useEffect(() => { if (cfgLoaded) localStorage.setItem(HIST_KEY, JSON.stringify(history.map(i => ({ ...i, photo: null })))); }, [history, cfgLoaded]);
+  useEffect(() => { return () => { if (photo?.startsWith('blob:')) URL.revokeObjectURL(photo); }; }, [photo]);
 
   /* ── Computed ─────────────────────────────────────────────────────────── */
-  const getFiringType = (typeId = firingTypeId) =>
-    (cfg.firingTypes || DEFAULT_FIRING_TYPES).find(t => t.id === typeId) || (cfg.firingTypes || DEFAULT_FIRING_TYPES)[0];
-
-  const getPFT = (typeId = firingTypeId) =>
-    clampNum(getFiringType(typeId)?.pft, 0, 99999, 400);
-
-  const getCL = (typeId = firingTypeId) =>
-    getPFT(typeId) / clampNum(cfg.KC, 1, 99999, 1);
-
-  const liveVP = () => {
-    const H = clampNum(meas.H, 0.1, 500, null);
-    const W = clampNum(meas.W, 0.1, 500, null);
-    const D = clampNum(meas.D, 0.1, 500, null);
+  const getFT    = (typeId = firingTypeId) => getFiringTypes(cfg).find(t => t.id === typeId) || getFiringTypes(cfg)[0];
+  const getPFT   = (typeId = firingTypeId) => clampNum(getFT(typeId)?.pft, 0, 99999, 400);
+  const getCL    = (typeId = firingTypeId) => getPFT(typeId) / clampNum(cfg.KC, 1, 99999, 1);
+  const liveVP   = () => {
+    const H = clampNum(meas.H, 0.1, 500, null), W = clampNum(meas.W, 0.1, 500, null), D = clampNum(meas.D, 0.1, 500, null);
     if (H === null || W === null || D === null) return null;
     return (roundUp05(H) * roundUp05(W) * roundUp05(D)) / 1000;
   };
-
   const livePrice = () => {
-    const vp = liveVP();
-    if (vp === null) return null;
+    const vp = liveVP(); if (vp === null) return null;
     return vp * getCL() * clampNum(cfg.CF, 0.1, 100, 1) * (1 + clampNum(cfg.PR, 0, 1000, 0) / 100);
   };
 
-  /* ── PIN gate ─────────────────────────────────────────────────────────── */
-  const goToAdmin = () => { setPinInput(''); setPinError(false); setShowPin(true); };
-
-  const submitPin = () => {
-    if (pinInput === cfg.pin) {
-      setShowPin(false); setPinInput(''); setPinError(false); setScreen('admin');
-    } else {
-      setPinError(true); setPinInput('');
-    }
-  };
-
-  /* ── Alert ────────────────────────────────────────────────────────────── */
+  /* ── Handlers ─────────────────────────────────────────────────────────── */
   const showAlert = (title, message) => setAlertData({ title, message });
-
-  /* ── File picker ──────────────────────────────────────────────────────── */
+  const goToAdmin = () => { setPinInput(''); setPinError(false); setShowPin(true); };
+  const submitPin = () => {
+    if (pinInput === cfg.pin) { setShowPin(false); setPinInput(''); setPinError(false); setScreen('admin'); }
+    else { setPinError(true); setPinInput(''); }
+  };
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     if (!file.type.startsWith('image/')) { showAlert('Imagen no válida', 'Solo se permiten archivos de imagen.'); return; }
     if (photo?.startsWith('blob:')) URL.revokeObjectURL(photo);
-    setPhoto(URL.createObjectURL(file));
-    e.target.value = '';
+    setPhoto(URL.createObjectURL(file)); e.target.value = '';
   };
 
-  /* ── Calculate ────────────────────────────────────────────────────────── */
   const calculate = () => {
     try {
-      const rawH = clampNum(meas.H, 0.1, 500, null);
-      const rawW = clampNum(meas.W, 0.1, 500, null);
-      const rawD = clampNum(meas.D, 0.1, 500, null);
-      if (rawH === null || rawW === null || rawD === null) {
-        showAlert('Medidas inválidas', 'Ingresa valores positivos para Alto, Ancho y Fondo (máx. 500 cm).'); return;
-      }
+      const rawH = clampNum(meas.H, 0.1, 500, null), rawW = clampNum(meas.W, 0.1, 500, null), rawD = clampNum(meas.D, 0.1, 500, null);
+      if (rawH === null || rawW === null || rawD === null) { showAlert('Medidas inválidas', 'Ingresa valores positivos para Alto, Ancho y Fondo (máx. 500 cm).'); return; }
       const H = roundUp05(rawH), W = roundUp05(rawW), D = roundUp05(rawD);
-      const PFT    = getPFT();
-      const CL     = getCL();
-      const CF     = clampNum(cfg.CF, 0.1, 100, 1);
-      const PR     = clampNum(cfg.PR, 0, 1000, 0);
-      const VP     = (H * W * D) / 1000;
-      const PR_mul = 1 + PR / 100;
-      const price  = VP * CL * CF * PR_mul;
-      if (!isFinite(price) || price < 0) { showAlert('Error de cálculo', 'El resultado no es válido. Revisa la configuración del horno.'); return; }
+      const PFT = getPFT(), CL = getCL(), CF = clampNum(cfg.CF, 0.1, 100, 1), PR = clampNum(cfg.PR, 0, 1000, 0);
+      const VP = (H * W * D) / 1000, PR_mul = 1 + PR / 100, price = VP * CL * CF * PR_mul;
+      if (!isFinite(price) || price < 0) { showAlert('Error de cálculo', 'El resultado no es válido. Revisa la configuración.'); return; }
       const res = {
-        id: genId(),
+        id: genId(), rawDate: todayISO(), date: todayLocal(),
         clientName: (clientName || '').slice(0, 80),
         desc: (desc || 'Pieza de cerámica').slice(0, 100),
         photo: isSafeUri(photo) ? photo : null,
-        firingTypeId, status,
-        H, W, D, VP, PFT, CL, CF, PR_mul, PR: cfg.PR, price,
-        date: new Date().toLocaleDateString('es-PE'),
+        firingTypeId, status, H, W, D, VP, PFT, CL, CF, PR_mul, PR: cfg.PR, price,
       };
       setResult(res);
       setHistory(prev => [res, ...prev.slice(0, 49)]);
       setScreen('result');
-    } catch (_) {
-      showAlert('Error inesperado', 'Ocurrió un problema al calcular. Por favor intenta de nuevo.');
-    }
+    } catch (_) { showAlert('Error inesperado', 'Ocurrió un problema al calcular. Por favor intenta de nuevo.'); }
   };
 
   const resetCalc = () => {
     setMeas({ H: '', W: '', D: '' });
     if (photo?.startsWith('blob:')) URL.revokeObjectURL(photo);
-    setPhoto(null); setDesc(''); setClientName('');
-    setFiringTypeId('esmalte'); setStatus('pendiente');
+    setPhoto(null); setDesc(''); setClientName(''); setFiringTypeId('esmalte'); setStatus('pendiente');
     setScreen('calculator');
   };
 
-  /* ── Update status from result screen ────────────────────────────────── */
   const updateStatus = (newStatus) => {
     const updated = { ...result, status: newStatus };
     setResult(updated);
-    setHistory(prev => prev.map(item => item.id === result.id ? { ...item, status: newStatus } : item));
+    setHistory(prev => prev.map(i => i.id === result.id ? { ...i, status: newStatus } : i));
   };
 
   /* ── Render ───────────────────────────────────────────────────────────── */
@@ -827,20 +848,21 @@ export default function App() {
         {screen === 'home'       && <HomeScreen cfg={cfg} history={history} goToAdmin={goToAdmin} setScreen={setScreen} />}
         {screen === 'admin'      && <AdminScreen cfg={cfg} setCfg={setCfg} setScreen={setScreen} showAlert={showAlert} />}
         {screen === 'calculator' && (
-          <CalculatorScreen
-            cfg={cfg} meas={meas} setMeas={setMeas}
-            photo={photo} setPhoto={setPhoto}
-            desc={desc} setDesc={setDesc}
-            clientName={clientName} setClientName={setClientName}
-            firingTypeId={firingTypeId} setFiringTypeId={setFiringTypeId}
-            status={status} setStatus={setStatus}
-            calculate={calculate} setScreen={setScreen}
-            liveVP={liveVP} livePrice={livePrice} getCL={getCL}
-            fileInputRef={fileInputRef} handleFileSelect={handleFileSelect}
-          />
+          <CalculatorScreen cfg={cfg} meas={meas} setMeas={setMeas} photo={photo} setPhoto={setPhoto}
+            desc={desc} setDesc={setDesc} clientName={clientName} setClientName={setClientName}
+            firingTypeId={firingTypeId} setFiringTypeId={setFiringTypeId} status={status} setStatus={setStatus}
+            calculate={calculate} setScreen={setScreen} liveVP={liveVP} livePrice={livePrice} getCL={getCL}
+            fileInputRef={fileInputRef} handleFileSelect={handleFileSelect} />
         )}
         {screen === 'result'  && <ResultScreen result={result} cfg={cfg} setScreen={setScreen} resetCalc={resetCalc} updateStatus={updateStatus} />}
-        {screen === 'history' && <HistoryScreen history={history} setResult={setResult} setScreen={setScreen} cfg={cfg} />}
+        {screen === 'history' && (
+          <HistoryScreen history={history} setResult={setResult} setScreen={setScreen} cfg={cfg}
+            selectedIds={selectedIds} setSelectedIds={setSelectedIds} selectMode={selectMode} setSelectMode={setSelectMode} />
+        )}
+        {screen === 'summary' && (
+          <SummaryScreen history={history} selectedIds={selectedIds} cfg={cfg}
+            setScreen={setScreen} setSelectedIds={setSelectedIds} setSelectMode={setSelectMode} />
+        )}
 
         {showNav && (
           <nav style={s.bottomNav}>
@@ -858,11 +880,8 @@ export default function App() {
           </nav>
         )}
 
-        <PinModal
-          showPin={showPin} pinInput={pinInput} setPinInput={setPinInput}
-          pinError={pinError} setPinError={setPinError}
-          onSubmit={submitPin} onCancel={() => { setShowPin(false); setPinInput(''); setPinError(false); }}
-        />
+        <PinModal showPin={showPin} pinInput={pinInput} setPinInput={setPinInput} pinError={pinError} setPinError={setPinError}
+          onSubmit={submitPin} onCancel={() => { setShowPin(false); setPinInput(''); setPinError(false); }} />
         <AlertModal alertData={alertData} setAlertData={setAlertData} />
       </div>
     </div>
@@ -873,11 +892,11 @@ export default function App() {
    STYLES
 ═══════════════════════════════════════════════════════════════════════════ */
 const s = {
-  root:     { minHeight: '100vh', backgroundColor: '#E8DDD8', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' },
+  root:     { minHeight: '100vh', backgroundColor: '#E8DDD8', display: 'flex', justifyContent: 'center' },
   appShell: { width: '100%', maxWidth: 430, backgroundColor: C.bg, minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 0 60px rgba(0,0,0,0.15)' },
   screen:   { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' },
   scrollArea: { flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' },
-  row:      { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  row:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   divider:  { height: 1, backgroundColor: C.border, margin: '10px 0' },
 
   homeHeader: { padding: '18px 24px 14px', backgroundColor: C.primaryDk, flexShrink: 0 },
@@ -888,7 +907,7 @@ const s = {
   menuLabel:  { fontSize: 13, fontWeight: 700, color: C.dark, marginBottom: 3, display: 'block' },
   menuDesc:   { fontSize: 11, color: C.muted, display: 'block' },
 
-  navbar:       { display: 'flex', alignItems: 'center', padding: '12px', backgroundColor: C.white, borderBottom: `1px solid ${C.border}`, flexShrink: 0 },
+  navbar:       { display: 'flex', alignItems: 'center', padding: 12, backgroundColor: C.white, borderBottom: `1px solid ${C.border}`, flexShrink: 0 },
   navBackBtn:   { background: 'none', border: 'none', padding: 6, marginRight: 4, cursor: 'pointer' },
   navBackText:  { fontSize: 24, color: C.primary, lineHeight: 1 },
   navTitle:     { flex: 1, fontSize: 17, fontWeight: 700, color: C.dark },
@@ -903,8 +922,6 @@ const s = {
 
   summaryLabel: { fontSize: 13, color: C.muted, flex: 1 },
   summaryValue: { fontSize: 13, fontWeight: 700, color: C.dark },
-  pill:         { backgroundColor: C.primaryXlt, borderRadius: 999, padding: '2px 8px' },
-  pillText:     { fontSize: 10, fontWeight: 700, color: C.primaryLt },
   formulaLine:  { fontFamily: 'monospace', fontSize: 12, color: C.primaryDk, padding: '4px 0', display: 'block' },
 
   label:      { fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6, display: 'block' },
@@ -930,6 +947,7 @@ const s = {
   resultDesc:  { fontSize: 13, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
   resultPrice: { fontSize: 54, fontWeight: 900, color: C.white, letterSpacing: -1, marginBottom: 4 },
   resultMeta:  { fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 8 },
+  heroBadge:   { backgroundColor: 'rgba(255,255,255,0.2)', color: C.white, borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 },
 
   bottomNav:  { display: 'flex', backgroundColor: C.white, borderTop: `1px solid ${C.border}`, flexShrink: 0 },
   navItem:    { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0 8px', background: 'none', border: 'none', cursor: 'pointer' },
